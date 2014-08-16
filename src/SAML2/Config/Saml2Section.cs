@@ -103,14 +103,14 @@ namespace SAML2.Config
         }
 
         /// <summary>
-        /// Gets or sets a value indicating whether to show errors, or a default error message.
+        /// Gets or sets the state service configuration.
         /// </summary>
-        /// <value><c>true</c> if errors should be shown; otherwise, <c>false</c>.</value>
-        [ConfigurationProperty("showError")]
-        public bool ShowError
+        /// <value>The state service configuration.</value>
+        [ConfigurationProperty("state")]
+        public StateElement State
         {
-            get { return (bool)base["showError"]; }
-            set { base["showError"] = value; }
+            get { return (StateElement)base["state"]; }
+            set { base["state"] = value; }
         }
 
         #endregion

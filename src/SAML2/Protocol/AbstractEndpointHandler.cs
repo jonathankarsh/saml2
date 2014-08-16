@@ -1,12 +1,8 @@
-using System;
 using System.Reflection;
-using System.Text;
-using System.Threading;
 using System.Web;
 using System.Web.SessionState;
-using SAML2.Config;
 using SAML2.Logging;
-using SAML2.Protocol.Pages;
+using SAML2.State;
 
 namespace SAML2.Protocol
 {
@@ -21,10 +17,9 @@ namespace SAML2.Protocol
         protected static readonly IInternalLogger Logger = LoggerProvider.LoggerFor(MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
-        /// Gets or sets the error handling behavior.
+        /// State Service instance
         /// </summary>
-        /// <value>The error handling behavior.</value>
-        public string ErrorBehavior { get; set; }
+        protected static readonly IInternalStateService StateService = StateServiceProvider.StateServiceFor(MethodBase.GetCurrentMethod().DeclaringType);
 
         /// <summary>
         /// Gets or sets the redirect URL.
@@ -53,82 +48,15 @@ namespace SAML2.Protocol
         #endregion
 
         /// <summary>
-        /// Displays an error page.
-        /// </summary>
-        /// <param name="context">The current HTTP context.</param>
-        /// <param name="errorMessage">The error message.</param>
-        public void HandleError(HttpContext context, string errorMessage)
-        {
-            HandleError(context, errorMessage, false);
-        }
-
-        /// <summary>
-        /// Displays an error page.
-        /// </summary>
-        /// <param name="context">The current HTTP context.</param>
-        /// <param name="errorMessage">The error message.</param>
-        /// <param name="overrideConfigSetting">if set to <c>true</c> [override config setting].</param>
-        public void HandleError(HttpContext context, string errorMessage, bool overrideConfigSetting)
-        {
-            var showError = Saml2Config.GetConfig().ShowError;
-            var defaultMessage = "Unable to validate SAML message!";
-
-            if (!string.IsNullOrEmpty(ErrorBehavior) && ErrorBehavior.Equals(Config.ErrorBehavior.ThrowException.ToString()))
-            {
-                if (showError)
-                {
-                    throw new Saml20Exception(errorMessage);
-                }
-                else
-                {
-                    throw new Saml20Exception(defaultMessage);
-                }
-            }
-            else
-            {
-                var page = new ErrorPage
-                               {
-                                   OverrideConfig = overrideConfigSetting,
-                                   ErrorText = showError ? errorMessage : defaultMessage
-                               };
-                page.ProcessRequest(context);
-                context.Response.End();
-            }
-        }
-
-        /// <summary>
-        /// Displays an error page.
-        /// </summary>
-        /// <param name="context">The current HTTP context.</param>
-        /// <param name="e">The exception that caused the error.</param>
-        public void HandleError(HttpContext context, Exception e)
-        {
-            // ThreadAbortException is just part of ASP.NET's slightly broken conditional logic, so don't react to it.
-            if (e is ThreadAbortException)
-            {
-                return;
-            }
-
-            var sb = new StringBuilder(1000);            
-            while (e != null)
-            {
-                sb.AppendLine(e.ToString());                
-                e = e.InnerException;                
-            }
-
-            HandleError(context, sb.ToString());
-        }
-
-        /// <summary>
         /// Redirects the user.
         /// </summary>
         /// <param name="context">The context.</param>
         public void DoRedirect(HttpContext context)
         {
-            var redirectUrl = (string)context.Session["RedirectUrl"];
+            var redirectUrl = StateService.Get<string>("RedirectUrl");
             if (!string.IsNullOrEmpty(redirectUrl))
             {
-                context.Session.Remove("RedirectUrl");
+                StateService.Remove("RedirectUrl");
                 context.Response.Redirect(redirectUrl);
             }
             else if (string.IsNullOrEmpty(RedirectUrl))

@@ -1,13 +1,12 @@
 ﻿using System.Configuration;
 using System.Security.Cryptography.X509Certificates;
-using SAML2.Properties;
 
 namespace SAML2.Config
 {
     /// <summary>
     /// Signing Certificate configuration element.
     /// </summary>
-    public class SigningCertificateElement : WritableConfigurationElement
+    public class CertificateElement : WritableConfigurationElement
     {
         #region Attributes
 
@@ -81,12 +80,12 @@ namespace SAML2.Config
                 var found = store.Certificates.Find(X509FindType, FindValue, ValidOnly);
                 if (found.Count == 0)
                 {
-                    throw new ConfigurationErrorsException(Resources.CertificateNotFoundFormat(FindValue));
+                    throw new ConfigurationErrorsException(string.Format(ErrorMessages.CertificateNotFound, FindValue));
                 }
 
                 if (found.Count > 1)
                 {
-                    throw new ConfigurationErrorsException(Resources.CertificateMoreThanOneFoundFormat(FindValue));
+                    throw new ConfigurationErrorsException(string.Format(ErrorMessages.CertificateNotUnique, FindValue));
                 }
 
                 return found[0];

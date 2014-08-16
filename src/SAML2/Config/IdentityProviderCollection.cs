@@ -6,7 +6,6 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
-using SAML2.Properties;
 using SAML2.Schema.Metadata;
 using SAML2.Utils;
 
@@ -19,10 +18,15 @@ namespace SAML2.Config
     public class IdentityProviderCollection : EnumerableConfigurationElementCollection<IdentityProviderElement>
     {
         /// <summary>
+        /// The file system watcher.
+        /// </summary>
+        private readonly FileSystemWatcher _fileSystemWatcher;
+
+        /// <summary>
         /// Contains Encoding instances of the the encodings that should by tried when a metadata file does not have its
         /// encoding specified.
         /// </summary>
-        private List<Encoding> _encodings; 
+        private List<Encoding> _encodings;
 
         /// <summary>
         /// A list of the files that have currently been loaded. The filename is used as key, while last seen modification time is used as value.
@@ -35,12 +39,30 @@ namespace SAML2.Config
         private Dictionary<string, string> _fileToEntity;
 
         /// <summary>
+        /// The locking object for assuring thread safe refresh.
+        /// </summary>
+        private object _lockSync = new object();
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="IdentityProviderCollection"/> class.
         /// </summary>
         public IdentityProviderCollection()
         {
             _fileInfo = new Dictionary<string, DateTime>();
             _fileToEntity = new Dictionary<string, string>();
+
+            _fileSystemWatcher = new FileSystemWatcher
+                                     {
+                                         Filter = "*.*",
+                                         NotifyFilter = NotifyFilters.LastAccess | NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
+                                         Path = MetadataLocation,
+                                         EnableRaisingEvents = true
+                                     };
+
+            _fileSystemWatcher.Changed += FileSystemWatcher_Changed;
+            _fileSystemWatcher.Created += FileSystemWatcher_Changed;
+            _fileSystemWatcher.Deleted += FileSystemWatcher_Changed;
+            _fileSystemWatcher.Renamed += FileSystemWatcher_Renamed;
         }
 
         #region Attributes
@@ -61,8 +83,23 @@ namespace SAML2.Config
         [ConfigurationProperty("metadata")]
         public string MetadataLocation
         {
-            get { return (string)base["metadata"]; }
-            set { base["metadata"] = value; }
+            get
+            {
+                var value = (string)base["metadata"];
+                if (!Path.IsPathRooted(value))
+                {
+                    return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, value);
+                }
+
+                return value;
+            }
+
+            set
+            {
+                base["metadata"] = value;
+                _fileSystemWatcher.Path = MetadataLocation;
+                Refresh();
+            }
         }
 
         /// <summary>
@@ -88,7 +125,7 @@ namespace SAML2.Config
 
             if (!Directory.Exists(MetadataLocation))
             {
-                throw new DirectoryNotFoundException(Resources.MetadataLocationNotFoundFormat(MetadataLocation));
+                throw new DirectoryNotFoundException(string.Format(ErrorMessages.MetadataLocationNotFound, MetadataLocation));
             }
 
             // Start by removing information on files that are no long in the directory.
@@ -176,6 +213,32 @@ namespace SAML2.Config
         }
 
         /// <summary>
+        /// Handles the Renamed event of the FileSystemWatcher control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RenamedEventArgs"/> instance containing the event data.</param>
+        private void FileSystemWatcher_Renamed(object sender, RenamedEventArgs e)
+        {
+            lock (_lockSync)
+            {
+                Refresh();
+            }
+        }
+
+        /// <summary>
+        /// Handles the Changed event of the FileSystemWatcher control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="FileSystemEventArgs"/> instance containing the event data.</param>
+        private void FileSystemWatcher_Changed(object sender, FileSystemEventArgs e)
+        {
+            lock (_lockSync)
+            {
+                Refresh();
+            }
+        }
+
+        /// <summary>
         /// Returns a list of the encodings that should be tried when a metadata file does not contain a valid signature
         /// or cannot be loaded by the XmlDocument class. Either returns a list specified by the administrator in the configuration file
         /// or a default list.
@@ -188,9 +251,9 @@ namespace SAML2.Config
                 return _encodings;
             }
 
-            this._encodings = string.IsNullOrEmpty(this.Encodings)
+            _encodings = string.IsNullOrEmpty(Encodings)
                                   ? new List<Encoding> { Encoding.UTF8, Encoding.GetEncoding("iso-8859-1") }
-                                  : new List<Encoding>(this.Encodings.Split(' ').Select(Encoding.GetEncoding));
+                                  : new List<Encoding>(Encodings.Split(' ').Select(Encoding.GetEncoding));
 
             return _encodings;
         }

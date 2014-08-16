@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IdentityModel.Selectors;
 using System.Security.Cryptography.X509Certificates;
-using SAML2.Properties;
 
 namespace SAML2.Specification
 {
